@@ -1,0 +1,108 @@
+
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GIBO Mariaburg - QR Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 550px;
+      margin: 30px auto;
+      padding: 20px;
+      text-align: center;
+      background: #f5f7fa;
+    }
+    h1 { color: #244b68; }
+    #reader {
+      width: 100%;
+      margin: 20px auto;
+    }
+    button {
+      background: #244b68;
+      color: white;
+      border: 0;
+      padding: 14px 24px;
+      border-radius: 8px;
+      font-size: 17px;
+      cursor: pointer;
+    }
+    #status {
+      margin: 20px;
+      padding: 12px;
+      background: white;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Studie-app</h1>
+  <h2>GIBO Mariaburg</h2>
+  <p>Scan de QR-code van de leerling.</p>
+
+  <div id="reader"></div>
+  <button id="startButton" onclick="startScanner()">
+    Camera starten
+  </button>
+  <div id="status">Druk op Camera starten.</div>
+
+  <script>
+    const APP_URL =
+      'https://script.google.com/a/macros/gibomariaburg.be/s/AKfycby1jjcW5hicqht7SpfJnftt_gz6_Zy9t9UX2LAOLLG-NU_8GHdZlOt3GajZLSY4-zxjXw/exec';
+
+    let scanner = null;
+    let alreadyScanned = false;
+
+    async function startScanner() {
+      const status = document.getElementById('status');
+      const button = document.getElementById('startButton');
+
+      try {
+        status.textContent = 'Camera wordt gestart...';
+        button.disabled = true;
+
+        scanner = new Html5Qrcode('reader');
+
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          throw new Error('Geen camera gevonden.');
+        }
+
+        const camera = cameras.find(c =>
+          /back|rear|environment|achter/i.test(c.label)
+        ) || cameras[0];
+
+        await scanner.start(
+          camera.id,
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (decodedText) => {
+            if (alreadyScanned) return;
+            alreadyScanned = true;
+
+            status.textContent = 'Leerling gevonden. Terug naar de studie-app...';
+
+            const destination =
+              APP_URL + '?token=' + encodeURIComponent(decodedText);
+
+            scanner.stop().then(() => {
+              window.location.href = destination;
+            });
+          },
+          () => {}
+        );
+
+        status.textContent = 'Camera actief. Richt op de QR-code.';
+      } catch (error) {
+        status.textContent =
+          'Camera niet beschikbaar: ' + error.message;
+        button.disabled = false;
+      }
+    }
+  </script>
+
+</body>
+</html>
