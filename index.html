@@ -5,7 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GIBO Mariaburg - QR Scanner</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -14,12 +15,16 @@
       padding: 20px;
       text-align: center;
       background: #f5f7fa;
+      color: #243b50;
     }
+
     h1 { color: #244b68; }
+
     #reader {
       width: 100%;
       margin: 20px auto;
     }
+
     button {
       background: #244b68;
       color: white;
@@ -28,36 +33,79 @@
       border-radius: 8px;
       font-size: 17px;
       cursor: pointer;
+      margin: 5px;
     }
-    #status {
-      margin: 20px;
-      padding: 12px;
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #status, #count {
+      margin: 15px 0;
+      padding: 14px;
       background: white;
       border-radius: 8px;
     }
+
+    #count {
+      font-size: 22px;
+      font-weight: bold;
+      color: #18794e;
+    }
+
+    #finishButton {
+      background: #18794e;
+      width: 100%;
+      margin-top: 15px;
+    }
   </style>
 </head>
+
 <body>
 
   <h1>Studie-app</h1>
   <h2>GIBO Mariaburg</h2>
-  <p>Scan de QR-code van de leerling.</p>
+
+  <p>Scan de QR-codes van alle leerlingen na elkaar.</p>
 
   <div id="reader"></div>
+
   <button id="startButton" onclick="startScanner()">
     Camera starten
   </button>
+
+  <div id="count">0 leerlingen gescand</div>
+
   <div id="status">Druk op Camera starten.</div>
 
+  <button id="finishButton" onclick="finishScanning()" disabled>
+    Verstuur naar studie-app
+  </button>
+
   <script>
-   const APP_URL = 'https://script.google.com/a/macros/gibomariaburg.be/s/AKfycbyhnxupAvKbwIXT7V2U6uiJjaUNvs6hXBEe1Kr2ha8qI4YJcKO63iJfVjBq75wnLUmrkQ/exec';
+    const APP_URL = 'https://script.google.com/a/macros/gibomariaburg.be/s/AKfycbyhnxupAvKbwIXT7V2U6uiJjaUNvs6hXBEe1Kr2ha8qI4YJcKO63iJfVjBq75wnLUmrkQ/exec';
 
     let scanner = null;
-    let alreadyScanned = false;
+    let scannerStarted = false;
+
+    const scannedTokens = [];
+    const scannedSet = new Set();
+
+    function updateCount() {
+      const count = scannedTokens.length;
+
+      document.getElementById('count').textContent =
+        count + (count === 1 ? ' leerling gescand' : ' leerlingen gescand');
+
+      document.getElementById('finishButton').disabled = count === 0;
+    }
 
     async function startScanner() {
       const status = document.getElementById('status');
       const button = document.getElementById('startButton');
+
+      if (scannerStarted) return;
 
       try {
         status.textContent = 'Camera wordt gestart...';
@@ -77,30 +125,73 @@
 
         await scanner.start(
           camera.id,
-          { fps: 10, qrbox: { width: 240, height: 240 } },
+          {
+            fps: 10,
+            qrbox: { width: 240, height: 240 }
+          },
           (decodedText) => {
-            if (alreadyScanned) return;
-            alreadyScanned = true;
+            if (scannedSet.has(decodedText)) return;
 
-            status.textContent = 'Leerling gevonden. Terug naar de studie-app...';
+            scannedSet.add(decodedText);
+            scannedTokens.push(decodedText);
 
-            const destination =
-              APP_URL + '?token=' + encodeURIComponent(decodedText);
+            updateCount();
 
-            scanner.stop().then(() => {
-              window.location.href = destination;
-            });
+            status.textContent =
+              'Leerling toegevoegd! Scan gerust de volgende leerling.';
           },
           () => {}
         );
 
-        status.textContent = 'Camera actief. Richt op de QR-code.';
+        scannerStarted = true;
+        status.textContent =
+          'Camera actief. Scan de QR-codes één voor één.';
+
       } catch (error) {
+        console.error(error);
+
         status.textContent =
           'Camera niet beschikbaar: ' + error.message;
+
         button.disabled = false;
       }
     }
+
+    async function finishScanning() {
+      const status = document.getElementById('status');
+      const button = document.getElementById('finishButton');
+
+      if (scannedTokens.length === 0) {
+        status.textContent = 'Er zijn nog geen leerlingen gescand.';
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = 'Scans worden doorgestuurd...';
+
+      try {
+        if (scanner && scannerStarted) {
+          await scanner.stop();
+          scannerStarted = false;
+        }
+
+        const destination =
+          APP_URL + '?tokens=' +
+          encodeURIComponent(JSON.stringify(scannedTokens));
+
+        window.location.href = destination;
+
+      } catch (error) {
+        console.error(error);
+
+        status.textContent =
+          'De camera kon niet netjes worden afgesloten. Probeer opnieuw.';
+
+        button.disabled = false;
+      }
+    }
+
+    updateCount();
   </script>
 
 </body>
